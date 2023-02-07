@@ -16,6 +16,7 @@ fn main() {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
 
+    let mut trees = Vec::with_capacity(sources.len());
     rt.block_on(async {
         let sources = collect_sources(source_dir).await;
 
@@ -25,9 +26,8 @@ fn main() {
         }
 
         for handle in handles {
-            let (source, _tree) = handle.await.unwrap();
-
-            println!("Source: {}", source.origin.unwrap());
+            let (source, tree) = handle.await.unwrap();
+            trees.push(tree);
         }
     })
 }
