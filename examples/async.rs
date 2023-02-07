@@ -16,9 +16,9 @@ fn main() {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
 
-    let mut trees = Vec::with_capacity(sources.len());
     rt.block_on(async {
         let sources = collect_sources(source_dir).await;
+        let mut trees = Vec::with_capacity(sources.len());
 
         let mut handles = Vec::with_capacity(sources.len());
         for source_path in sources {
