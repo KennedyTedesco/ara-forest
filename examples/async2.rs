@@ -33,6 +33,7 @@ fn main() {
         .build()
         .unwrap();
 
+    let mut trees = Vec::with_capacity(sources.len());
     for chunk in chunks {
         pool.install(|| {
             let rt = Builder::new_multi_thread()
@@ -47,8 +48,8 @@ fn main() {
                 }
 
                 for handle in handles {
-                    let (source, _tree) = handle.await.unwrap();
-                    println!("Source: {}", source.origin.unwrap());
+                    let (_source, tree) = handle.await.unwrap();
+                    trees.push(tree);
                 }
             });
         });
