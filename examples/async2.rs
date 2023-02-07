@@ -36,7 +36,7 @@ fn main() {
     for chunk in chunks {
         pool.install(|| {
             let rt = Builder::new_multi_thread()
-                .worker_threads(NUM_EXECUTORS / 2)
+                .worker_threads(NUM_EXECUTORS)
                 .build()
                 .unwrap();
 
