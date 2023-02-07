@@ -2,6 +2,7 @@ use ara_parser::tree::Tree;
 use ara_source::source::Source;
 use ara_source::source::SourceKind;
 use std::path::PathBuf;
+use std::thread;
 use tokio::fs;
 use tokio::runtime::Builder;
 use walkdir::WalkDir;
@@ -23,20 +24,35 @@ fn main() {
         .map(Vec::from)
         .collect::<Vec<Vec<PathBuf>>>();
 
-    let rt = Builder::new_current_thread().build().unwrap();
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(NUM_EXECUTORS)
+        .spawn_handler(|thread| {
+            thread::spawn(|| thread.run());
+            Ok(())
+        })
+        .build()
+        .unwrap();
 
-    rt.block_on(async {
-        let mut handles = Vec::with_capacity(sources.len());
-        for source_path in sources {
-            handles.push(tokio::spawn(build_tree(source_path)));
-        }
+    for chunk in chunks {
+        pool.install(|| {
+            let rt = Builder::new_multi_thread()
+                .worker_threads(NUM_EXECUTORS / 2)
+                .build()
+                .unwrap();
 
-        for handle in handles {
-            let (source, _tree) = handle.await.unwrap();
+            rt.block_on(async {
+                let mut handles = Vec::with_capacity(chunk.len());
+                for source_path in chunk {
+                    handles.push(tokio::spawn(build_tree(source_path)));
+                }
 
-            println!("Source: {}", source.origin.unwrap());
-        }
-    })
+                for handle in handles {
+                    let (source, _tree) = handle.await.unwrap();
+                    println!("Source: {}", source.origin.unwrap());
+                }
+            });
+        });
+    }
 }
 
 async fn build_tree(source_path: PathBuf) -> (Source, Tree) {
