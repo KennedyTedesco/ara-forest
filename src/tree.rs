@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use ara_parser::tree::Tree;
 use ara_source::source::Source;
 use ara_source::source::SourceKind;
+use ara_source::source::SourceTrait;
 
 use crate::config::Config;
 use crate::error::Error;
@@ -68,8 +69,7 @@ impl<'a> TreeBuilder<'a> {
             .serializer
             .deserialize(&fs::read(cached_file_path)?)?;
 
-        let current_signature = self.config.hasher.hash(&source.content);
-        if signed_tree.signature != current_signature {
+        if signed_tree.signature != source.hash()? {
             log::warn!(
                 "cache miss due to source change ({}).",
                 source.origin.as_ref().unwrap(),
@@ -93,10 +93,10 @@ impl<'a> TreeBuilder<'a> {
         tree: Tree,
         cached_file_path: &PathBuf,
     ) -> Result<Tree, Error> {
-        let mut file = File::create(cached_file_path)?;
-        let signed_tree = SignedTree::new(self.config.hasher.hash(&source.content), tree);
+        let signed_tree = SignedTree::new(source.hash()?, tree);
 
         let serialized = self.config.serializer.serialize(&signed_tree)?;
+        let mut file = File::create(cached_file_path)?;
         file.write_all(&serialized)?;
 
         log::info!(
@@ -126,9 +126,8 @@ impl<'a> TreeBuilder<'a> {
             Some(extension) if extension == ARA_DEFINITION_EXTENSION => SourceKind::Definition,
             _ => SourceKind::Script,
         };
-        let content = fs::read_to_string(source_path)?;
 
-        Ok(Source::new(kind, origin, content))
+        Ok(Source::new(kind, &self.config.root, origin))
     }
 
     fn strip_root(&self, path: &Path) -> String {
