@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
 use std::thread;
 
 use ara_parser::tree::Tree;
@@ -10,7 +9,7 @@ use ara_source::SourceMap;
 
 use crate::config::Config;
 use crate::error::Error;
-use crate::source::SourceFilesCollector;
+use crate::source::SourcesBuilder;
 use crate::tree::TreeBuilder;
 
 pub mod config;
@@ -53,54 +52,53 @@ impl<'a> Parser<'a> {
     pub fn parse(&self) -> Result<Forest, Box<Report>> {
         self.init_logger().map_err(|error| Box::new(error.into()))?;
 
-        let (sources, trees) =
-            thread::scope(|scope| -> Result<(Vec<Source>, Vec<Tree>), Box<Report>> {
-                self.create_cache_dir()
-                    .map_err(|error| Box::new(error.into()))?;
+        let sources = SourcesBuilder::new(self.config)
+            .build()
+            .map_err(|error| Box::new(error.into()))?;
 
-                let files = SourceFilesCollector::new(self.config)
-                    .collect()
-                    .map_err(|error| Box::new(error.into()))?;
+        if sources.is_empty() {
+            return Ok(Forest::new(
+                SourceMap::new(Vec::new()),
+                TreeMap::new(Vec::new()),
+            ));
+        }
 
-                if files.is_empty() {
-                    return Ok((Vec::new(), Vec::new()));
-                }
+        let threads_count = self.threads_count(sources.len());
+        let chunks = sources
+            .chunks(sources.len() / threads_count)
+            .map(|chunk| chunk.iter().collect::<Vec<&Source>>())
+            .collect::<Vec<Vec<&Source>>>();
 
-                let threads_count = self.threads_count(files.len());
-                let chunks = files
-                    .chunks(files.len() / threads_count)
-                    .map(Vec::from)
-                    .collect::<Vec<Vec<PathBuf>>>();
+        let trees = thread::scope(|scope| -> Result<Vec<Tree>, Box<Report>> {
+            self.create_cache_dir()
+                .map_err(|error| Box::new(error.into()))?;
 
-                let mut threads = Vec::with_capacity(threads_count);
-                for chunk in chunks.into_iter() {
-                    threads.push(scope.spawn(
-                        move || -> Result<Vec<(Source, Tree)>, Box<Report>> {
-                            let mut source_tree = Vec::with_capacity(chunk.len());
-                            for source_path in chunk {
-                                let (source, tree) = self
-                                    .tree_builder
-                                    .build(&source_path)
-                                    .map_err(|error| match error {
-                                        Error::ParseError(report) => report,
-                                        _ => Box::new(error.into()),
-                                    })?;
-                                source_tree.push((source, tree));
-                            }
+            let mut threads = Vec::with_capacity(threads_count);
+            for sources_chunk in chunks.into_iter() {
+                threads.push(scope.spawn(move || -> Result<Vec<Tree>, Box<Report>> {
+                    let mut trees = Vec::with_capacity(sources_chunk.len());
+                    for source in sources_chunk {
+                        let tree =
+                            self.tree_builder
+                                .build(source)
+                                .map_err(|error| match error {
+                                    Error::ParseError(report) => report,
+                                    _ => Box::new(error.into()),
+                                })?;
+                        trees.push(tree);
+                    }
 
-                            Ok(source_tree)
-                        },
-                    ));
-                }
+                    Ok(trees)
+                }));
+            }
 
-                let mut result = Vec::new();
-                for handle in threads {
-                    result.extend(handle.join().unwrap()?);
-                }
-                let (sources, trees) = result.into_iter().unzip();
+            let mut trees = Vec::with_capacity(sources.len());
+            for handle in threads {
+                trees.extend(handle.join().unwrap()?);
+            }
 
-                Ok((sources, trees))
-            })?;
+            Ok(trees)
+        })?;
 
         Ok(Forest::new(SourceMap::new(sources), TreeMap::new(trees)))
     }
