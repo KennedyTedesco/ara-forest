@@ -52,7 +52,7 @@ impl<'a> Parser<'a> {
     pub fn parse(&self) -> Result<Forest, Box<Report>> {
         self.init_logger().map_err(|error| Box::new(error.into()))?;
 
-        let sources = SourcesBuilder::new(self.config)
+        let mut sources = SourcesBuilder::new(self.config)
             .build()
             .map_err(|error| Box::new(error.into()))?;
 
@@ -63,18 +63,20 @@ impl<'a> Parser<'a> {
             ));
         }
 
-        let threads_count = self.threads_count(sources.len());
-        let chunks = sources
-            .chunks(sources.len() / threads_count)
-            .map(|chunk| chunk.iter().collect::<Vec<&Source>>())
-            .collect::<Vec<Vec<&Source>>>();
+        let sources_len = sources.len();
+        let threads_count = self.threads_count(sources_len);
+
+        let chunks = &mut sources
+            .chunks_mut(sources_len / threads_count)
+            .map(|chunk| chunk.iter_mut().collect::<Vec<&mut Source>>())
+            .collect::<Vec<Vec<&mut Source>>>();
 
         let trees = thread::scope(|scope| -> Result<Vec<Tree>, Box<Report>> {
             self.create_cache_dir()
                 .map_err(|error| Box::new(error.into()))?;
 
             let mut threads = Vec::with_capacity(threads_count);
-            for sources_chunk in chunks.into_iter() {
+            for sources_chunk in chunks.iter_mut() {
                 threads.push(scope.spawn(move || -> Result<Vec<Tree>, Box<Report>> {
                     let mut trees = Vec::with_capacity(sources_chunk.len());
                     for source in sources_chunk {
@@ -92,7 +94,7 @@ impl<'a> Parser<'a> {
                 }));
             }
 
-            let mut trees = Vec::with_capacity(sources.len());
+            let mut trees = Vec::with_capacity(sources_len);
             for handle in threads {
                 trees.extend(handle.join().unwrap()?);
             }
