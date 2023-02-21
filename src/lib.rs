@@ -1,5 +1,6 @@
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
+use std::cmp;
 use std::fs;
 
 use ara_parser::tree::Tree;
@@ -60,8 +61,10 @@ impl<'a> Parser<'a> {
             .collect()
             .map_err(|error| Box::new(error.into()))?;
 
+        let threads_count = cmp::min(self.config.threads, source_files.len());
+
         rayon::ThreadPoolBuilder::new()
-            .num_threads(self.threads_count(source_files.len()))
+            .num_threads(threads_count)
             .build_global()
             .map_err(|error| Box::new(error.into()))?;
 
@@ -80,14 +83,6 @@ impl<'a> Parser<'a> {
             .unzip();
 
         Ok(Forest::new(SourceMap::new(sources), TreeMap::new(trees)))
-    }
-
-    fn threads_count(&self, files_len: usize) -> usize {
-        if self.config.threads > files_len {
-            files_len
-        } else {
-            self.config.threads
-        }
     }
 
     fn create_cache_dir(&self) -> Result<(), Error> {
