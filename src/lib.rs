@@ -74,23 +74,20 @@ impl<'a> Parser<'a> {
 
                 let mut threads = Vec::with_capacity(threads_count);
                 for chunk in chunks.into_iter() {
-                    threads.push(scope.spawn(
-                        move || -> Result<Vec<(Source, Tree)>, Box<Report>> {
-                            let mut source_tree = Vec::with_capacity(chunk.len());
-                            for source_path in chunk {
-                                let (source, tree) = self
-                                    .tree_builder
-                                    .build(&source_path)
-                                    .map_err(|error| match error {
-                                        Error::ParseError(report) => report,
-                                        _ => Box::new(error.into()),
-                                    })?;
-                                source_tree.push((source, tree));
-                            }
+                    threads.push(scope.spawn(|| -> Result<Vec<(Source, Tree)>, Box<Report>> {
+                        let mut source_tree = Vec::with_capacity(chunk.len());
+                        for source_path in chunk {
+                            let (source, tree) = self.tree_builder.build(&source_path).map_err(
+                                |error| match error {
+                                    Error::ParseError(report) => report,
+                                    _ => Box::new(error.into()),
+                                },
+                            )?;
+                            source_tree.push((source, tree));
+                        }
 
-                            Ok(source_tree)
-                        },
-                    ));
+                        Ok(source_tree)
+                    }));
                 }
 
                 let mut result = Vec::new();
