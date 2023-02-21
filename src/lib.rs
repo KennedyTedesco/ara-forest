@@ -1,6 +1,6 @@
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::IntoParallelRefIterator;
+use rayon::iter::ParallelIterator;
 use std::fs;
-use std::path::PathBuf;
 
 use ara_parser::tree::Tree;
 use ara_parser::tree::TreeMap;
@@ -64,7 +64,7 @@ impl<'a> Parser<'a> {
             .par_iter()
             .map(|source_path| -> Result<(Source, Tree), Box<Report>> {
                 self.tree_builder
-                    .build(&source_path)
+                    .build(source_path)
                     .map_err(|error| match error {
                         Error::ParseError(report) => report,
                         _ => Box::new(error.into()),
