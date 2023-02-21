@@ -56,16 +56,16 @@ impl<'a> Parser<'a> {
         self.create_cache_dir()
             .map_err(|error| Box::new(error.into()))?;
 
-        let files = SourceFilesCollector::new(self.config)
+        let source_files = SourceFilesCollector::new(self.config)
             .collect()
             .map_err(|error| Box::new(error.into()))?;
 
         rayon::ThreadPoolBuilder::new()
-            .num_threads(self.threads_count(files.len()))
+            .num_threads(self.threads_count(source_files.len()))
             .build_global()
             .unwrap();
 
-        let (sources, trees) = files
+        let (sources, trees) = source_files
             .par_iter()
             .map(|source_path| -> Result<(Source, Tree), Box<Report>> {
                 self.tree_builder
