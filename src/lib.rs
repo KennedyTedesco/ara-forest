@@ -60,6 +60,11 @@ impl<'a> Parser<'a> {
             .collect()
             .map_err(|error| Box::new(error.into()))?;
 
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(self.threads_count(files.len()))
+            .build_global()
+            .unwrap();
+
         let (sources, trees): (Vec<_>, Vec<_>) = files
             .par_iter()
             .map(|source_path| -> Result<(Source, Tree), Box<Report>> {
