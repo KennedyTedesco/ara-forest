@@ -63,7 +63,7 @@ impl<'a> Parser<'a> {
         rayon::ThreadPoolBuilder::new()
             .num_threads(self.threads_count(source_files.len()))
             .build_global()
-            .unwrap();
+            .map_err(|error| Box::new(error.into()))?;
 
         let (sources, trees) = source_files
             .par_iter()
