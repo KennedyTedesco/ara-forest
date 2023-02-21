@@ -65,7 +65,7 @@ impl<'a> Parser<'a> {
             .build_global()
             .unwrap();
 
-        let (sources, trees): (Vec<Source>, Vec<Tree>) = files
+        let (sources, trees) = files
             .par_iter()
             .map(|source_path| -> Result<(Source, Tree), Box<Report>> {
                 self.tree_builder
