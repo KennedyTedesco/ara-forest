@@ -75,7 +75,7 @@ impl<'a> Parser<'a> {
                         _ => Box::new(error.into()),
                     })
             })
-            .collect::<Result<Vec<_>, _>>()?
+            .collect::<Result<Vec<(Source, Tree)>, _>>()?
             .into_iter()
             .unzip();
 
