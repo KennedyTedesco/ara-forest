@@ -34,8 +34,6 @@ impl<'a> TreeBuilder<'a> {
         let mut source = self.build_source(source_path)?;
         let tree = self.build_tree(&mut source)?;
 
-        source.dispose_content();
-
         Ok((source, tree))
     }
 
@@ -60,6 +58,8 @@ impl<'a> TreeBuilder<'a> {
                 self.save_to_cache(source, tree, &cached_file_path)
             },
         )?;
+
+        source.dispose_content();
 
         Ok(tree)
     }
