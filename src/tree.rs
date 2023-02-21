@@ -9,7 +9,6 @@ use std::path::PathBuf;
 use ara_parser::tree::Tree;
 use ara_source::source::Source;
 use ara_source::source::SourceKind;
-use ara_source::source::SourceTrait;
 
 use crate::config::Config;
 use crate::error::Error;
@@ -32,13 +31,13 @@ impl<'a> TreeBuilder<'a> {
     }
 
     pub fn build(&self, source_path: &Path) -> Result<(Source, Tree), Error> {
-        let source = self.build_source(source_path)?;
-        let tree = self.build_tree(&source)?;
+        let mut source = self.build_source(source_path)?;
+        let tree = self.build_tree(&mut source)?;
 
         Ok((source, tree))
     }
 
-    fn build_tree(&self, source: &Source) -> Result<Tree, Error> {
+    fn build_tree(&self, source: &mut Source) -> Result<Tree, Error> {
         if self.config.cache.is_none() {
             return ara_parser::parser::parse(source).map_err(Error::ParseError);
         }
@@ -60,10 +59,16 @@ impl<'a> TreeBuilder<'a> {
             },
         )?;
 
+        source.dispose_content();
+
         Ok(tree)
     }
 
-    fn get_from_cache(&self, source: &Source, cached_file_path: &PathBuf) -> Result<Tree, Error> {
+    fn get_from_cache(
+        &self,
+        source: &mut Source,
+        cached_file_path: &PathBuf,
+    ) -> Result<Tree, Error> {
         let signed_tree = self
             .config
             .serializer
@@ -89,7 +94,7 @@ impl<'a> TreeBuilder<'a> {
 
     fn save_to_cache(
         &self,
-        source: &Source,
+        source: &mut Source,
         tree: Tree,
         cached_file_path: &PathBuf,
     ) -> Result<Tree, Error> {
@@ -108,7 +113,7 @@ impl<'a> TreeBuilder<'a> {
         Ok(signed_tree.tree)
     }
 
-    fn get_cached_file_path(&self, source: &Source) -> PathBuf {
+    fn get_cached_file_path(&self, source: &mut Source) -> PathBuf {
         let cache_path = self.config.cache.as_ref().unwrap();
         cache_path
             .join(
