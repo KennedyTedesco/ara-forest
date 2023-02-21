@@ -1,8 +1,7 @@
-use bincode::config;
 use bincode::Decode;
 use bincode::Encode;
+use std::fs;
 use std::fs::File;
-use std::io::BufReader;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -70,9 +69,10 @@ impl<'a> TreeBuilder<'a> {
         source: &mut Source,
         cached_file_path: &PathBuf,
     ) -> Result<Tree, Error> {
-        let mut buf_reader = BufReader::new(File::open(cached_file_path)?);
-        let signed_tree: SignedTree =
-            bincode::decode_from_reader(&mut buf_reader, config::standard())?;
+        let signed_tree = self
+            .config
+            .serializer
+            .deserialize(&fs::read(cached_file_path)?)?;
 
         if signed_tree.signature != source.hash()? {
             log::warn!(
