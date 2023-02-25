@@ -1,7 +1,11 @@
 use ara_parser::tree::Tree;
 use ara_source::source::Source;
 use ara_source::source::SourceKind;
-use std::path::PathBuf;
+use bincode::config;
+use bincode::Decode;
+use bincode::Encode;
+use std::hash::Hasher;
+use std::path::{Path, PathBuf};
 use std::thread;
 use tokio::fs;
 use tokio::runtime::Builder;
@@ -15,8 +19,15 @@ const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 
 const NUM_EXECUTORS: usize = 6;
 
+#[derive(Debug, Hash, Encode, Decode)]
+pub struct SignedTree {
+    pub signature: u64,
+    pub tree: Tree,
+}
+
 fn main() {
     let source_dir = PathBuf::from(format!("{MANIFEST_DIR}/examples/project/src"));
+    let cache_dir = PathBuf::from(format!("{MANIFEST_DIR}/examples/project/.cache"));
 
     let sources = collect_sources(source_dir);
     let chunks = sources
@@ -45,7 +56,7 @@ fn main() {
             rt.block_on(async {
                 let mut handles = Vec::with_capacity(chunk.len());
                 for source_path in chunk {
-                    handles.push(tokio::spawn(build_tree(source_path)));
+                    handles.push(tokio::spawn(build_tree(source_path, cache_dir.clone())));
                 }
 
                 for handle in handles {
@@ -57,7 +68,7 @@ fn main() {
     }
 }
 
-async fn build_tree(source_path: PathBuf) -> (Source, Tree) {
+async fn build_tree(source_path: PathBuf, cache_dir: PathBuf) -> (Source, Tree) {
     let contents = fs::read_to_string(&source_path).await.unwrap();
 
     let kind = match source_path.extension() {
@@ -65,16 +76,39 @@ async fn build_tree(source_path: PathBuf) -> (Source, Tree) {
         _ => SourceKind::Script,
     };
 
-    let origin = &source_path
-        .strip_prefix("")
-        .map(|path| path.to_string_lossy())
-        .unwrap()
-        .to_string();
-
+    let origin = strip_root(&source_path);
     let source = Source::new(kind, origin, contents);
-    let tree = ara_parser::parser::parse(&source).unwrap();
+    let tree = get_from_cache(&source, &cache_dir).await;
 
     (source, tree)
+}
+
+fn strip_root(path: &Path) -> String {
+    let root = PathBuf::from(format!("{MANIFEST_DIR}/examples/project"));
+
+    path.strip_prefix(root)
+        .map(|path| path.to_string_lossy())
+        .unwrap()
+        .to_string()
+}
+
+async fn get_from_cache(source: &Source, cache_dir: &PathBuf) -> Tree {
+    let file_path = cache_dir
+        .join(hash(source.origin.as_ref().unwrap()).to_string())
+        .with_extension(ARA_CACHED_SOURCE_EXTENSION);
+
+    let data = fs::read(&file_path).await.unwrap();
+
+    let (signed_tree, _): (SignedTree, _) =
+        bincode::decode_from_slice(&data, config::standard()).unwrap();
+
+    signed_tree.tree
+}
+
+fn hash(content: &str) -> u64 {
+    let mut hasher = rustc_hash::FxHasher::default();
+    hasher.write(content.as_bytes());
+    hasher.finish()
 }
 
 fn collect_sources(dir: PathBuf) -> Vec<PathBuf> {
